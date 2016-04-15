@@ -1,0 +1,362 @@
+\documentclass[letterpaper, 10 pt, conference]{ieeeconf}  %  this line out if you need a4paper
+
+%\documentclass[a4paper, 10pt, conference]{ieeeconf}      % Use this line for a4 paper
+
+\IEEEoverridecommandlockouts                              % This command is only needed if 
+                                                          % you want to use the \thanks command
+
+\overrideIEEEmargins                                      % Needed to meet printer requirements.
+
+% See the \addtolength command later in the file to balance the column lengths
+% on the last page of the document
+
+% The following packages can be found on http:\\www.ctan.org
+%\usepackage{graphics} % for pdf, bitmapped graphics files
+%\usepackage{epsfig} % for postscript graphics files
+%\usepackage{mathptmx} % assumes new font selection scheme installed
+%\usepackage{times} % assumes new font selection scheme installed
+\usepackage{amsmath} % assumes amsmath package installed
+\usepackage{amssymb}  % assumes amsmath package installed
+%\usepackage{algorithmicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\usepackage{geometry}                		% See geometry.pdf to learn the layout options. There are lots.
+\geometry{letterpaper}                   		% ... or a4paper or a5paper or ... 
+%\geometry{landscape}                		% Activate for rotated page geometry
+%\usepackage[parfill]{parskip}    		% Activate to begin paragraphs with an empty line rather than an indent
+\usepackage{graphicx}				% Use pdf, png, jpg, or eps§ with pdflatex; use eps in DVI mode
+			         				% TeX will automatically convert eps --> pdf in pdflatex		
+\usepackage{amssymb}
+
+
+\begin{document}
+
+\title{\LARGE \bf
+Distributed Optimization Algorithm Adapting to Latency in Network Links
+}
+\author{Kush Prasad, Advisor: Dr. Yufeng Xin}  % <-this % stops a space
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\documentclass[11pt, oneside]{article}   	% use "amsart" instead of "article" for AMSLaTeX format
+
+
+\begin{abstract}
+
+Distributed optimization algorithms for a network of distributed agents have proved to be important in the areas of machine learning, sensor networks and big data among other applications. In this paper, we present a review of the alternating direction method of multipliers (ADMM), a method which has been gaining increasing attention recently to solve distributed optimization problems. We present the optimization problem formulation under study, the assumptions made, the ADMM algorithm and its convergence properties. We focus on performance advantages in solving common optimization problems (global consensus variable optimization and the sharing problem) and highlight the application of ADMM to particular problems in linear classification and wireless sensor networks. We also describe the asynchronous and decentralized variants of ADMM. In practical applications in distributed networked systems, the standard ADMM algorithm may not be ideal for application since the distributed agents are assumed to be synchronous in the standard ADMM. We finally formulate a distributed optimization problem, and use the ADMM algorithm to give its solution.
+
+\end{abstract}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{INTRODUCTION}
+
+Multi-agent optimization problems find application in various kinds of networks such as wireless sensor networks \cite{schizas2008consensus}, power grids \cite{nabavidistributed}, cluster of machines in a datacenter \cite{xu2013joint} and chips on motherboard of a machine. In such networks, while achieving a global optimization goal, distributed optimization helps save communication bandwith and energy which is a scarce resource in networks. In the special case of data-based applications, with the availability of large-scale data from the internet, one machine is not able to store all the data and the data is spread across multiple (maybe upto a thousand) machines. Since transferring such high amounts of data would incur high communication costs and may not even be feasible, it is advisable to perform optimization at the local machines using distributed optimization algorithms \cite{bertsekas1989parallel}. More specifically, we will focus on solving the optimization problem where the objective function consists of sum of separable convex functions having its own set of constraints. The problem is formulated as below.
+
+\begin{equation} \label{dist_opt}
+\min_{x_1, .., x_N} \sum_{i=1}^{N} f_i(x_i)
+\end{equation}
+Subject to:
+\begin{equation}  
+x \in X
+\end{equation}
+
+In the equation above, $x^T = [x_{1}^T, .., x_{N}^T]$ and lies in the constraint set $X$. $x$, $x_1$, $x_N$ here are column vectors. From an application perspective, each function $f_i$ resides on a separate node in a network.  A variety of problems such as the consensus optimization problem in a network can be formulated in the above framework. One class of methods for solving such problems are sub-gradient methods \cite{ram2010distributed}, \cite{johansson2008subgradient}, \cite{nedic2009distributed} in which a node uses the sub-gradient of its objective function and the latest iterates from its neghbours to compute its iterate. The best known rate of convergence for these methods is of the order of $O\left(\frac{1}{\sqrt{k}}\right)$ \cite{lobel2008convergence} where $k$ is number of iterations. Another class of methods involves solving primal and dual problems alternately. A prominent algorithm of this class is the alternate direction method of multipliers (ADMM). The best known convergence rate for ADMM is of the order of $O\left(\frac{1}{k}\right)$ \cite{boyd2011distributed}, \cite{he20121}, \cite{wei2012distributed}. The algorithm finds application in a variety of areas such as image processing, machine learning, processing of large-scale data, wide area networks among other applications. It is specifically suitable for applications which require an optimization problem to be solved in a decentralized manner across different machines.
+
+In this work we study a decentralized version of the ADMM algorithm where global optimization is achieved by communicating with only the neighboring nodes. This version of the algorithm \cite{schizas2008consensus}, uses only a subset of nodes (called bridge nodes) to communicate with all its neighbors while nodes which are not bridge nodes communicate only with the bridge nodes. This saves communication costs in the network. We consider the problem of latency and failure in network links and develop a dynamic algorithm which adapts to latency in links in real-time. Our algorithm allows a certain bridge node in the network to communicate only with a subset of its neighbors. We show that the algorithm still converges to an optimal solution retaining the original convergence properties. Through the experiments we also show that our algorithm results in lower running time for computing the optimal solution. 
+
+%The reader shall also refer to \cite{boyd2011distributed} for a recent survey of the algorithm. One of the earlier works on the ADMM algorithm is by Gabriel and Mercer \cite{gabay1976dual} and related work on method of multipliers by Rockafellar \cite{rockafellar1976augmented}. In this paper, we term decentralized ADMM algorithm as the case where a node is only able to communicate with its neighboring nodes. We consider distributed optimization algorithms to include both the standard ADMM (with star-like topology) and the decentralized ADMM. There has been research on variants of ADMM such as asynchronous ADMM (async-ADMM)\cite{zhang2014asynchronous}, decentralized ADMM (D-ADMM) \cite{mota2013d}, \cite{wei2012distributed} and asynchronous decentralized ADMM \cite{iutzeler2013asynchronous}. The algorithm finds application in a variety of areas such as image processing, machine learning, processing of large-scale data, wide area networks among other applications. It is specifically suitable for applications which require an optimization problem to be solved in a decentralized manner across different machines. 
+
+
+%In ADMM, the objective function of the formulated problem is decomposed into separable functions and the algorithm makes the assumption (discussed in section \ref{ADMM_section}) that the separable objective functions $f_i$ in equation \ref{dist_opt} are convex. Most of the machine learning problems such as support vector machines \cite{zhang2012efficient}, logistic regression or linear regression are formulated as convex optimization problems. In machine learning problems, the amount of data may be too large for one machine to handle or the data may be high-dimensional. These two cases are quite common in applications such as computer vision, bioinformatics and others. In such cases, distributed optimization algorithms such as ADMM may be suitable for solving the problem. Either the data may be split across several machines or the feature vector may be split and the problem can be expressed in the form of equation \label{dist_opt}. Each machine solves its own convex optimization problem and the solutions are coordinated to compute the global solution.  This enables us to solve learning problems in a distributed manner and also reduces the communication and bandwidth costs in the network since only the variables are communicated and the data is not.  Thus we see that, with the use of ADMM we are able to save communication, bandwidth costs while computing a global solution to a convex optimization problem in a decentralized manner. We shall also point out that machine learning problems usually require the solution to be of modest accuracy and ADMM delivers that in tens of iterations \cite{boyd2011distributed}. In problems of parameter estimation in wireless sensor networks \cite{schizas2008consensus} and power grids \cite{nabavidistributed}, the data collected at each sensor node cannot be communicated due to communication costs. Solving these problems through distributed optimization algorithms such as ADMM reduces communication costs of the network.
+
+In section II of this paper, we present the ADMM algorithm along with its assumptions and  convergence properties. In section III, we describe a decentralized ADMM algorithm in which nodes only communicate with the neighboring nodes. In Section IV, we discuss a policy and an algorithm to account for for latency in network links and link failures. In section V, we present our conclusions regarding the algorithms presented and the inference from our results.
+
+\section{ Background on ADMM Formulation, Algorithm and Application} \label{ADMM_section}
+
+\subsection{ADMM Problem Formulation}
+
+In this section, we describe the ADMM problem formulation and the iterative algorithm used to solve it. We specifically use ADMM when the objective function is separable into different functions and each of the function itself is convex. Each separable function being convex ensures that we can compute its minimum separately. The Standard ADMM is formulated as below.
+
+\begin{equation} \label{ADMM}
+\min_{x_1, ..., x_N,z} \left(\sum\limits_{i=1}^{N} f(x_i)\right) + g(z) 
+\end{equation}
+Subject to:
+\begin{equation}   \label{ADMM Constraints}
+A_ix_i + B_iz = c_i \;\; \forall \; i = 1,...,N
+\end{equation}  
+
+In the above equation, $x_i \in \mathbb{R}^n_i$, $z \in \mathbb{R}^m$, $A_i \in \mathbb{R}^{p_i \times n_i}$, $B_i \in \mathbb{R}^{p_i \times m}$, $c_i \in \mathbb{R}^{p_i}$. As can be seen above, the objective function has been split into separate functions $f_i(x_i)$ and $g(z)$ and the optimization variable has been split into sub-vectors of the original variable. This separation of objective function and variables helps us solve the problem in a distributed manner.
+
+\subsection{Algorithm} 
+
+To solve any optimization problem using the ADMM methodology, we form its augmented lagrangian. The augmented lagrangian $L_{\rho}$ for the problem formulation in equations \ref{ADMM} - \ref{ADMM Constraints} is given by equation \ref{augmented_lagrangian}. Minimizing the augmented lagrangian is equivalent to minimizing the original optimization problem. We minimize the augmented lagrangian by first optimizing it with respect to primal variables by solving a convex optimization problem and then with respect to the dual variable using gradient ascent. The iterations to update the variables are given by equations \ref{x_update} - \ref{y_update}. We shall mention here that the constraints given by equation \ref{ADMM Constraints} may also be coupled in the variables $x_i$. The updates for $x_i$ can then be solved keeping $x_{-i}$ constant and optimizing over $x_i$ where $x_{-i} = [x_1,..,x_{i-1},x_{i+1},...,x_N]$. In the following equations, $\rho > 0$ is the penalty constant and each $x_i$ and $z$ updates are separate convex optimization problems in themselves. 
+
+
+\begin{align} \label{augmented_lagrangian}
+\begin{split}
+& L_{\rho}(x_1, ..., x_N,z,y_1,...,y_N)  = \sum\limits_{i=1}^{N}f(x_i) \\
+& + g(z) + \sum\limits_{i=1}^{N}y_{i}^T(A_ix_i+B_iz-c_i) \\
+& + \sum\limits_{i=1}^{N}(\rho/2)\|A_ix_i+B_iz-c_i\|_{2}^{2}
+\end{split}
+\end{align} 
+
+\begin{equation}  \label{x_update}
+x_{i(k+1)} := arg \min_{x_i} \; L_{\rho}(x_i,z_k,y_{i(k)}) \;\; \forall \; i
+\end{equation}
+
+\begin{align}  \label{z_update}
+\begin{split}
+z_{k+1} := arg \min_{z} \;  L_{\rho} 
+& (x_{1(k+1)},..,x_{N(k+1)} \\
+& z,y_{1(k)},..,y_{N(k)})
+\end{split}
+\end{align}
+
+\begin{align}  \label{y_update}
+\begin{split}
+y_{i(k+1)} := 
+& \; y_{i(k)} +  \rho (A_ix_{i(k+1)}+B_iz_{i(k+1)}-c_i) \\
+& \forall \; i
+\end{split}
+\end{align}
+
+\subsection{Optimality Conditions, Convergence and Stopping Criterion}
+
+The ADMM algorithm works and converges under the assumptions that the separable functions are closed, proper and convex and that there exists a saddle point for the unaugmented lagrangian. When these assumptions mentioned are met, the ADMM iterations (equations \ref{x_update} - \ref{y_update}) ensure convergence of objective function to its optimum value and the value of dual variable to its optimal value when the number of iterations tends to $\infty$. In practice the ADMM is slow to converge to an optimal value within a small error. However, the algorithm converges to modest accuracy in tens of iterations which is what is required in applications such as estimation and machine learning. The optimality conditions for the ADMM problem formulation are primal feasibility and dual feasibility. They can be stated as below. The reader shall refer to work by Stephen Boyd et al \cite{boyd2011distributed} for details of the derivation although they can also be from the optimization problem formulation in equations \ref{ADMM} - \ref{ADMM Constraints} and using equations \ref{augmented_lagrangian} - \ref{y_update}.
+
+\noindent 
+Optimality Conditions:
+\begin{enumerate} \label{optimality conditions}
+\item $A_ix_i + B_iz \to c_i \;\; \forall \; i = 1,...,N$
+\item $\rho A_i^{T}B_i(z_{k+1} - z_k) \to 0 \;\; \forall \; i = 1,...,N$
+\end{enumerate}
+
+\subsection{Implementation in a Network}
+
+ADMM finds application in various areas of machine learning \cite{zhang2012efficient} \cite{gopal2013distributed}, estimation and sensor networks since it enables us to solve the optimization problem in a distributed manner. Solving a problem in a distributed manner is particularly helpful when solving machine learning problems where data is spread across multiple machines and also for solving problems of estimation in sensor networks. The optimization problem may be solved using a star-like topology where a master node is connected to and communicates with several worker nodes. The pseudocodes for the operations at the master and worker nodes is given by algorithms \ref{master node} and \ref{worker node} respectively. The function of the master node is to receive updates of $x_{i(k+1)}$, $y_{i(k)}$ from each worker node, use their values to compute $z_{k+1}$ and then send $z_{k+1}$ to each worker node. Each worker node computes  $y_{i(k)}$, $x_{i(k+1)}$ using the received value of $z_{k}$ and sends $y_{i(k)}$, $x_{i(k+1)}$ to the master node.
+
+\begin{algorithm}
+\caption{Algorithm at Worker Node $i$}
+\label{worker node}
+\begin{algorithmic} 
+\State Initialize $x_{i(k+1)}$ and $y_{i(k)}$
+\State flag = 1 
+\While {flag = 1}
+\Comment {flag = 0 when optimality conditions are met. It is received from master node in each iteration.}
+\State Receive $z_{k}$, value of flag from master node.
+\State Compute $y_{i(k)}$.
+\State Compute $x_{i(k+1)}$.
+\State Send $x_{i(k+1)}$, $y_{i(k)}$ to master node.
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Algorithm at Master Node $i$}
+\label{worker node}
+\begin{algorithmic} 
+\State Initialize $x_{i(k+1)}$ and $y_{i(k)}$.
+\While {Optimality$(x_1,..,x_N,z,y_1,..,y_N)$ = 0}
+\State Compute $z_k$ using $x_{i(k+1)}$ and $y_{i(k)}$.
+\State Send $z_k$ to each worker node.
+\State Receive $x_{i(k+1)}$ and $y_{i(k)}$.
+\EndWhile
+\State NOTE: Optimality$(x_1,..,x_N,z,y_1,..,y_N)$ is a function which checks the optimality conditions and returns 1 when satisfied otherwise 0.
+\end{algorithmic}
+\end{algorithm}
+
+\section{ADMM using Bridge Nodes in a Network}  \label{section_wsn}
+
+In sensor networks communicating data to a central node costs energy which is a precious resource in such networks. Decentralized optimization algorithms depend only on communication among the neighboring nodes and thus consume less energy in comparison to centralized algorithms. Application areas which use these algorithms are machine learning and parameter estimation in sensor networks. There has been research on decentralized ADMM algorithms \cite{wei2012distributed}, \cite{mota2013d} in the recent past.
+
+In this section we are interested in consensus in ad hoc wireless sensor networks and the details presented are based on the research in \cite{schizas2008consensus}. We present how a network parameter can be estimated using observations collected across nodes in the network. To be specific, we have $J$ nodes in the network. We denote the neighbors of node $j$ as $N_j$. We know that the node links are symmetric, i.e. if node $i$ can communicate with node $j$, then node $j$ can communicate with $i$ ($i \in N_j$ if and only if $j \in N_i$). Our objective is to estimate a $\mathbb{R}^{p \times 1}$ vector $s$ based on observations $\{x_j \in \mathbb{R}^{L_j \times 1}\}_{j=1}^{J}$ taken at node $j$ and following the probability distribution function $p_j(x_j;s)$. The maximum likelihood estimator is then give by the following.
+
+\begin{equation}  \label{wsn_ml}
+\hat{s}_{ML} = arg \min_{s \in \mathbb{R}^{p \times 1}} - \sum_{j=1}^{J} \ln [p_j(x_j;s)]
+\end{equation}
+
+The above model is applicable when the pdf's for observations at each node $j$ are known or have been assumed. We will present decentralized iterative algorithms to solve the above optimization problem using only single-hop communication. We make the following two assumptions which will help us in solving the problem in a decentralized manner.\\ \\
+\underline{Assumptions}:
+\begin{itemize}
+\item The communication graph of nodes is connected. There is a path connecting any two nodes.
+\item The pdf's $p_j(x_j;s)$ are log-concave with respect to the network parameter $s$.
+\end{itemize}
+Assumption 1 ensures network connectivity which in turn ensures that all observations are used to compute the optimal solution. And assumption 2 ensures that there is a unique optimal solution to the global problem and the global problem is strictly convex. Let us now formulate the problem in a decentralized manner. Since the summands in equation \ref{wsn_ml} are coupled through the parameter vector $s$ for each node $j$, we introduce an auxiliary variable $s_j$ and formulate the problem in the following manner.
+
+\begin{equation} \label{distributed_wsn}
+\{\hat{s}_j\}_{j=1}^{J} = arg \min_{s_j} - \sum_{j=1}^{J} \ln [p_j(x_j;s)]
+\end{equation}
+
+Subject to:
+
+\begin{equation}
+s_j = \bar{s}_b, \;\;\; b \in B, \;\;\; j \in N_b
+\end{equation}
+
+Where $B \subset [1,J]$ is a subset of bridge nodes maintaining local vectors $\hat{s}_b$. These vectors help to maintain consensus among the neighboring nodes. Let us now give the definition of $B$ such that it is a subset of bridge nodes.
+Set $B$ is a subset of bridge nodes if and only if:
+\begin{enumerate}
+\label{bridge conditions}
+\item Every node has a neighboring node which is a bridge node
+\item Any pair of single-hop neighboring nodes must share a bridge node.
+\end{enumerate}
+The above definition for $B$ provides a necessary and sufficient condition for the equivalence of optimization formulation in \ref{wsn_ml} and the formulation in \ref{distributed_wsn}. The lagrangian for equation \ref{distributed_wsn} can be written in the following way.
+
+\begin{align} \label{lagrangian_wsn}
+\begin{split}
+L(s,\bar{s},v) 
+& = - \sum_{j=1}^{J} \ln [p_j(x_j;s)] \\
+& + \sum_{b \in B} \sum_{j \in N_b} (v_j^b)^T(s_j - \bar{s}_b) \\
+& + \sum_{b \in B} \sum_{j \in N_b} \frac{c_j}{2}\|s_j - \bar{s}_b\|_{2}^{2}
+\end{split}
+\end{align}
+
+Where $s = \{s_j\}_{j=1}^{J}$, $\bar{s} = \{\bar{s}_b\}_{b \in B}$, $v = \{v_j^b\}_{j \in [1,J]}^{b \in B_j}$ and $\{c_j\}_{j=1}^{J}$ are constants greater than zero. Applying alternate direction method of multipliers to equation \ref{lagrangian_wsn}, we get the following iterations for $s_j$, $\bar{s}_b$ and $v_j^b$.
+
+\begin{align}
+\begin{split}
+s_j(k+1) 
+& = arg \min_{s_j} -\ln p_j(x_j;s) \\
+& + \sum_{b \in B_j} (v_j^b)^T(s_j - \bar{s}_b(k)) \\
+& + \sum_{b \in B_j} \frac{c_j}{2} \|s_j - \bar{s}_b(k)\|_{2}^{2}
+\end{split}
+\end{align}
+
+\begin{align}
+\begin{split}
+\bar{s}_b(k+1) 
+& = \sum_{j \in N_b} \frac{1}{\sum_{\beta \in N_b} c_{\beta}} [v_{j}^{b}(k) + c_j s_j (k+1)]  \\
+& \forall b \in B
+\end{split}
+\end{align}
+
+\begin{align}
+\begin{split}
+v_j^b(k+1) 
+& = v_j^b(k) + c_j (s_j(k+1) \\
+& - \bar{s}_b (k+1)), \;\;\; \forall b \in B_j
+\end{split}
+\end{align}
+
+The parameter estimates $s_j$ and $\{ v_j^b \}_{b \in B_j}$ are maintained at the $j^{th}$ node and consensus estimates $\bar{s}_b$ are maintained at the corresponding bridge nodes. The bridge node communicates $\bar{s}_b$ to the neighboring nodes $N_b$ and the nodes $j$ communicate $s_j$ to bridge nodes $b \in B_j$. The above iterations are derived from the ADMM algorithm. The parameter estimates $s_j$ at nodes and the estimates $\bar{s}_b$ at the bridge nodes converge to a consensus value as the number of iterations tend to $\infty$. After enough iterations each node has the parameter estimate $s_j$ which is a solution to equation \ref{wsn_ml}. Since the pdf's at each node are concave the solution is unique. Thus we have the following.
+
+\begin{equation}
+\lim_{k \rightarrow \infty} s_j(k) = \lim_{k \rightarrow \infty} \bar{s}_b(k) = \hat{s}_{ML} \;\; \forall j \in [1,J], \;\; b \in B
+\end{equation}
+
+We shall note that only single-hop communications take place to run the ADMM iterations. Thus the sensor network consumes less power and and is robust to failures in comparison to a system where there is a central processor.  For practical implementation, $x_i(k+1)$ and dual variables $y_{i}^{b}(k)$ are updated at all nodes $i$ in the network. These updates are communicated to bridge nodes $b \in NB(i)$ in the network and $x_b(k+1)$ is then updated at the bridge nodes. The bridge node communicates back its update $x_b(k+1)$ to all nodes $i \in B(b)$. Thus we see that we can implement the ADMM algorithm using bridge nodes in networks. This releases the communication load from one central node. In certain networks, there may be some machines which have more resources than others (in terms of memory, computation and bandwidth), they can be allotted as the bridge nodes in the network.
+
+\section{Accounting for Latency and Failures in Network Links}
+
+All real networks have latency in their links. It is a well known fact that the fastest speed of communication (theoretically) is the speed of light and that the actual time taken to communicate is actually significantly more in practice. Latency in links, failure of links and failure of nodes in the network affect the performance of any distributed algorithm running on a network. ADMM with bridge nodes described in the previous section, when applied on a real network will be affected by issues of latency in links, failure of links and node failures. The failures may be more prominent in certain kinds of networks such as long-distance networks and wireless networks. To overcome the issues of failure of nodes and latency in links, we are interested in developing a dynamic algorithm which adapts in real-time to failures in the network and latency in links. We note that different links have different latency values at different times in a network. Most probably all links are not going to fail at the same time or the latency in all links in the network is not going to be high at the same time. This observation can be used to develop a distributed optimization algorithm which adapts to node and link failures and latency issues in links in real-time. 
+
+\subsection{Policy and Algorithm to Adapt to Latency in Links}
+
+In the alternate direction method of multipliers with bridge nodes, computation is run with all bridge nodes acting as the master nodes performing computation and all respective neighboring nodes as the worker nodes. Thus, if we use the algorithm to build consensus in a network, all the bridge nodes perform computation to build consensus among its neighbors. A bridge node communicates with all its neighbors while all the non-bridge nodes communicate only with their bridge nodes. We are suggesting a policy that a node in the network may apply to adapt to latency in its link with the bridge node. When a node detects high latency value in its link with the bridge node, it shall either ask one if its neighbors (in common with the bridge node) to become the bridge node or itself become the bridge node. And after finding a new bridge node, the node does not communicate the bridge node with which it has latency issues. Thus we modify the algorithm described in the previous section such that a bridge node does not communicate with all its neighboring nodes but only a subset of its neighboring nodes. This is a key point in the development of our algorithm and shall be emphasized. The policy and the algorithm shall satisfy certain properties of graph connectivity and bridge nodes which were satisfied by algorithm in the previous section. Provided certain conditions, this will enable communication of the nodes using links which have lower latency. 
+
+Below is the notation we use to describe our policy. Algorithm \ref{Bridge-Node At Normal Node} gives the specific pseudocode to describe our algorithm.
+%To demonstrate with a simple example how failure and latency in links can affect the output of the network, let us look at figure 1. There are four nodes in the network shown in figure 1 which are interconnected by five links. If there is latency in links 1 and 2, then the number of iterations taken to converge to an optimal solution will be larger than in the ideal situation. If the mentioned links fail, then the network will not converge to an optimal value. 
+
+\begin{enumerate}
+\item $Bridge(i) = {1,0}$ indicates whether the node $i$ is a bridge node or not.
+\item $Lmax(i)$ = maximum latency among all links of node $i$.
+\item $Lmax_{no-bridge}(i)$ = maximum latency among all links (but the link with bridge node).
+\item $minLmaxNeigh(i)$ = minimum of all Lmax values received from neighboring nodes.
+\item If $latency_{bridge}(b)$ = latency in link between the node and its bridge node $b$.
+\item $latency_{limit}$ = maximum allowable latency value in link with bridge node.
+\item $N(i)$ = set of neighboring nodes of node $i$.
+\item $N_{B}(b,i)$ = set of node in $N(i)$ which also have bride node $b$.
+\item $B(i)$ = set of bridge nodes of node $i$.
+\end{enumerate}
+
+
+\begin{algorithm}
+\caption{Algorithm at node $i$}
+\label{Bridge-Node At Normal Node}
+\begin{algorithmic} 
+\ForAll {$b \in B(i)$}
+\If {$latency_{bridge}(b)$ $>$ $latency_{limit}$ \& $N_{B}(b,i)$ $\neq$ $\emptyset$}
+\If {$Bridge(i)$ = 1}
+\State remove $b$ from $B(i)$.
+\Else \; {$Bridge(i)$ = 0}
+\State $minLmaxNeigh(i)$ $=$ $\min \limits_{n} \; Lmax(n \in N_{B}(b,i))$
+\If {$Lmax_{no-bridge}(i)$ $<$ $minLmaxNeigh(i)$}
+\State $Bridge(i) = 1$
+\State inform all $n \in N(i)$ that node $i$ is now a bridge node. 
+\State remove $b$ from $B(i)$.
+\Else \; {$Lmax_{no-bridge}(i)$ $\geq$ $minLmaxNeigh(i)$}
+\ForAll {$j \in N_{B}(b,i)$}
+\If {$Lmax_{no-bridge}(i)$ $\geq$ $Lmax(j)$ \& $Lmax(j)$ $<$ $latency_{bridge}(b)$ \& $Lmax(j) < latency_{limit}$}
+\State remove node $b$ from $B(i)$.
+\State add node $j$ to $B(i)$.
+\EndIf
+\EndFor
+\EndIf
+\EndIf
+\EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+
+
+%Given a subset of nodes, we would like to communicate through links which have low latency in the network. In the above procedure, an algorithm \ref{Bridge-Node at normal node} runs at each of the nodes. If a node detects high latency in its link with the bridge node, it communicates with its neighboring nodes (having the same bridge node) and sends its latency in link with bridge node, maximum latency among all its links, its attributes and receives the same from all the neighboring nodes. If maximum latency of node is less than maximum latency received from all the nodes, then it becomes the bridge node. When the neighboring nodes receive message from the adjacent-to-bridge node containing maximum latency and bridge node attributes, then they perform the same procedure of sending and receiving messages from their neighboring nodes. Let us now summarize the algorithm running at normal nodes.
+
+%After the running of algorithm \ref{Bridge-Node at Normal Node} and algorithm \ref{Bridge-Node at Neighbor Node} at the nodes, one of the nodes neighboring the bridge node may send a message to the bridge node that it is becoming bridge node along with its neighboring nodes which share the same bridge node. In this case the bridge node communicates with all nodes except the neighboring node and nodes sharing the same bridge node. If all the nodes another common bridge node with the current bridge node, then the current bridge node ceases to be the bridge node and communicates this with all its neighbors.  
+
+\subsection{Practical Implementation Details}
+
+We discuss two practical implementation details for implementation of the bridge node algorithm which adapts to adapts to latency in links in the network. One of them is an algorithm for initializing the bridge nodes and the other is an algorithm for computing latency in all the links of a node. The network needs to initialize bridge nodes in the network using a distributed fashion while also satisfying the properties of graph connectivity and bridge node properties. We describe such a process in algorithm \ref{Bridge-Node Initialization Algorithm} for initializing the bridge nodes. 
+
+\begin{algorithm}
+\caption{Algorithm for Initialization at node $i$}
+\label{Bridge-Node Initialization Algorithm}
+\begin{algorithmic} 
+\State b = 0
+\For {$n \in N(i)$}
+\State b = Bridge(n)
+\If {b = 1}
+\State Bridge(i) = 0
+\State End for loop
+\EndIf
+\EndFor
+\If {b = 0}
+\State Bridge(i) = 1
+\Else
+\State Bridge(i) = 0
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+Implementation of algorithm \ref{Bridge-Node At Normal Node} requires computation of latency in all links of the node $i$. We propose the following procedure to do that.
+
+\begin{enumerate}
+\item Run threads on node $i$ that can simultaneously communicate with the neighboring nodes $N(i)$.
+\item Send messages to neighboring nodes and record the time in each thread.
+\item Receive messages from neighboring nodes and record the time as well.
+\item The difference in the two values of the time recorded gives us an estimate of the latency value.
+\end{enumerate}
+
+\section{Conclusions}
+
+
+In this work, we described the described the distributed optimization problem and how the alternate distributed method of multipliers (ADMM) can be applied to solve the distributed optimization problem. ADMM with a single master node is susceptible to failures and we thus show a more robust application of the algorithm where only the neighboring nodes communicate with each other. A set of nodes in the network function as the master node with their respective neighbors as worker nodes. This reduces the communication cost in the network while making the algorithm robust to node failures. We developed a dynamic algorithm which adapts to latency and failure in network links. We point that a bridge node may communicate with only a subset of its nodes while maintaining graph connectivity. The algorithm functions in such a way that the convergency properties of the algorithm are maintained. The algorithm has a lower runtime in comparison to the original algorithm as shown by the experiments. We thus come to the conclusion that, in the presence of excess latency in network links, it is better (in terms of runtime performance) for a bridge node to communicate with only a subset of its neighbors. This insight results in a dynamic algorithm and policy which we have described in this work.
+
+%In this work, we reviewed distributed optimization using the ADMM algorithm. With regard to ADMM we stated its problem formulation, assumptions and convergence properties. In applications where the data is distributed across several machines, ADMM helps save communication cost, bandwidth and energy in the network system. The ADMM algorithm particularly finds implementation If the optimization problems at the local machines are solvable (eg. convex optimization problems). We also reviewed the application of ADMM to a linear classification problem (support vector machines) and to parameter estimation in wireless sensor networks. In both applications the algorithm is able to solve the optimization without transferring data from the local nodes. We also describe variants of ADMM such as asynchronous ADMM and decentralized which have been an area of research interest in the recent past. These variants are more suited to practical application of ADMM in networks. Finally, we propose a new ADMM algorithm framework for distributed optimization. We formulate the optimization problem for solving the global consensus variable optimization where bridge nodes communicate with nodes within multiple hops. We give the solution to the problem using the ADMM algorithm. A future research direction is to conduct experimental evaluation of the algorithm for different values of hops. We may find some insight upon comparison of standard ADMM (with central node), and bridge nodes with different values of hops. Overall, we find that the ADMM algorithm finds application to problems in machine learning, sensor networks among other applications in distributed processing. Certain practical applications such as learning on large-scale data and parameter estimation in sensor networks do not allow the data to be collected on a single machine for processing. In such applications, ADMM algorithm helps us find a solution to the optimization problem in a distributed manner to modest accuracy in tens of iterations. 
+
+\bibliographystyle{plain}
+\bibliography{ADMM}
+
+
+
+
+
+
+
+
+\end{document}
