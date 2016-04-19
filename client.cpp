@@ -15,7 +15,7 @@ int main ()
 
   host_info.ai_family = AF_UNSPEC;
   host_info.ai_socktype = SOCK_STREAM;
-  status = getaddrinfo("172.16.0.1", "5522", &host_info, &host_info_list);
+  status = getaddrinfo("172.16.0.6", "5532", &host_info, &host_info_list);
   cout<<"status: "<<status<<endl;
   if (status != 0)
   {
@@ -34,14 +34,11 @@ int main ()
     cout<<"connect error \n";
   }
   cout << "send()ing message..."  <<endl;
-  while(1)
-  {
   char *msg = "Hi! This is Kush";
   int len;
   ssize_t bytes_sent;
   len = strlen(msg);
   bytes_sent = send(socketfd, msg, len, 0);
   cout<<"bytes sent: "<<bytes_sent<<endl;
-  }
   return 0;
 }

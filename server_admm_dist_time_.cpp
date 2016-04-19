@@ -7,8 +7,10 @@
 #include <vector>
 #include <math.h>
 #include <time.h>
+#include <chrono>
 
 using namespace std;
+using namespace std::chrono;
 
 uint64_t pack754(double f, unsigned bits, unsigned expbits)
 {
@@ -219,8 +221,8 @@ int create_socket(const char* s)
 void initialize_addresses(vector<const char*>& adresses)
 {
   //adresses[0] = "172.16.0.1";
-  adresses[0] = "172.16.0.1";
-  adresses[1] = "172.16.0.18";
+  adresses[0] = "172.16.0.13";
+  adresses[1] = "172.16.0.5";
 }
 
 int main ()
@@ -229,14 +231,14 @@ int main ()
   ssize_t bytes_recieved, bytes_sent;
   unsigned char* point;
   uint64_t temp_64;
-  clock_t t_1, t_2;
   x_and_u msg_recv, avg, msg_send_serv;
   admm_z msg_send, msg_recv_serv;
-  double v = 8.0, rho = 0.5;
+  double v = 4.0, rho = 0.5;
   int i, j, len_recv = 16, len_send = 8, no_of_sockets = 4, iterations = 30, no_of_neigh = 2, no_of_bridges = 1;
   int len_send_serv = 16, len_recv_serv = 8;
   vector<int> sockets(no_of_neigh,0);
   vector<const char*> address(no_of_neigh,"172.16.0.14");
+  //clock_t t_1, t_2;
   initialize_addresses(address);
   for (i = 0; i < no_of_neigh; i++)
   {
@@ -245,7 +247,8 @@ int main ()
   vector<double> u_b(no_of_bridges, 0.0);
   msg_send_serv.u = 0.0;
   msg_send_serv.x = (2*v + 0.0 - rho*msg_send_serv.u*no_of_bridges)/(2+rho*no_of_bridges); 
-  t_1 = clock();
+  //t_1 = clock();
+  system_clock::time_point t_1 = system_clock::now();
   double sum_z_b = 0.0, sum_u_b = 0.0;
   for (j = 0; j < iterations; j++)
   {
@@ -281,7 +284,7 @@ int main ()
     }
     sum_z_b = sum_z_b + msg_send.z;
     msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
-    sum_u_b = 0.0;
+    sum_u_b= 0.0;
     for (i = 0; i < no_of_bridges - 1; i++)
     {
       unsigned char buffer_send_serv[16];
@@ -291,14 +294,17 @@ int main ()
       send_msg_struct_cl(sockets[i], &buffer_send_serv[0], msg_send_serv, len_send_serv);
     }
     u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
-    sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
+    sum_u_b = sum_u_b + u_b[no_of_bridges-1];
     msg_send_serv.u = u_b[no_of_bridges-1];
   }
-  t_2 = clock();
-  float seconds = (float(t_2) - float(t_1))/CLOCKS_PER_SEC;
+  //t_2 = clock();
+  system_clock::time_point t_2 = system_clock::now();
+  //float seconds = (float(t_2) - float(t_1))/CLOCKS_PER_SEC;
+  duration<double> elapsed_time = t_2 - t_1;
   cout<<"\nConsensus value: "<<msg_send.z<<"\n";
   cout<<"Value of x: "<<msg_send_serv.x<<"\n";
   cout<<"Value of v: "<<v<<"\n";
-  cout<<"seconds: "<<seconds<<"\n";
+ // cout<<"seconds: "<<seconds<<"\n";
+  cout<<"duration: "<<elapsed_time.count()<<"\n";
   return 0;
 }

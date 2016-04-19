@@ -165,16 +165,17 @@ int create_socket(const char* s)
 
 void initialize_addresses(vector<const char*>& adresses)
 {
-  adresses[0] = "172.16.0.10";
+  adresses[0] = "172.16.0.13";
+  adresses[1] = "172.16.0.1";
 }
 
 int main ()
 {
   x_and_u msg_send;
   admm_z msg_recv;
-  double rho = 0.5, v = 12.0;
+  double rho = 0.5, v = 14.0;
   uint64_t temp_64;
-  int i, j, len_recv = 8, len_send = 16, iterations = 15, no_of_bridges = 1;
+  int i, j, len_recv = 8, len_send = 16, iterations = 30, no_of_bridges = 2;
   ssize_t bytes_sent, bytes_recv;
   vector<int> sockets(no_of_bridges,0);
   vector<const char*> address(no_of_bridges,"172.16.0.14");
@@ -187,15 +188,17 @@ int main ()
   msg_send.x = (2*v + 0.0 - msg_send.u)/(2+rho); 
   vector<double> u_b(no_of_bridges, 0.0);
   vector<double> z_b(no_of_bridges, 0.0);
-  double sum_z_b = 0.0;
+  double sum_z_b = 0.0, sum_u_b = 0.0;
   for (j = 0; j < iterations; j++)
   {
-    msg_send.x = (2*v + rho*sum_z_b - rho*msg_send.u*no_of_bridges)/(2+rho*no_of_bridges);
+    msg_send.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
+    sum_u_b = 0.0;
     for (i = 0; i < no_of_bridges; i++)
     {
       unsigned char buffer_send[16];
       u_b[i] = u_b[i] + msg_send.x - z_b[i];
       msg_send.u = u_b[i];
+      sum_u_b = sum_u_b + u_b[i];
       send_msg_struct(sockets[i], &buffer_send[0], msg_send, len_send);
     }
     sum_z_b = 0.0;
