@@ -20,7 +20,7 @@ host_info.ai_family = AF_UNSPEC;
 host_info.ai_flags = AI_PASSIVE;     
 host_info.ai_socktype = SOCK_STREAM; 
  
-status = getaddrinfo("172.16.0.1", "5522", &host_info, &host_info_list);
+status = getaddrinfo("172.16.0.1", "5532", &host_info, &host_info_list);
 
 if (status != 0)  
 {
@@ -61,13 +61,10 @@ else
     cout << "Connection accepted. Using new socketfd : "<<new_sd<<endl;
 }
 ssize_t bytes_recieved;
-while(1)
-{
 char incoming_buffer[100];
-bytes_recieved = recv(socketfd, incoming_buffer, 100, 0);
+bytes_recieved = recv(new_sd, incoming_buffer, 100, 0);
 cout<<"bytes received: "<<bytes_recieved<<endl;
 string s(incoming_buffer);
 cout<<s<<endl<<incoming_buffer[0]<<incoming_buffer[1]<<endl;
-}
 return 0;
 }
