@@ -303,6 +303,7 @@ struct attributes
   int neigh_ind; 
   int node_deg;
   bool active;
+  bool bridge;
   char connect_type;
 };
 
@@ -318,7 +319,7 @@ void initialize_address_attr(const char* inter_this, const char* inter_neigh, at
   neighbor_attr.active = act;
 }
 
-void initialize_all_addresses(vector<const char*>& addresses, vector<attributes>& all_neighbors_attr)
+void initialize_all_addresses(vector<attributes>& all_neighbors_attr)
 {
   //adresses[0] = "172.16.0.1";
   //adresses[0] = "172.16.0.5";
@@ -339,52 +340,63 @@ void send_msg_string(int socketfd, char* msg)
   bytes_sent = send(socketfd, msg, len, 0);
 }
 
-void send_bridge_neighbors(vector<attributes>& all_neighbors_attr, vector<int>& sockets)
+void send_bridge_neighbors(vector<attributes>& all_neighbors_attr, vector<int>& sockets, bool this_bridge)
 {
-  int i, no_of_neigh, total_active_neigh = 0;
-  no_of_neigh = all_neighbors_attr.size();
-  for (i = 0; i < no_of_neigh; i++)
+  if (this_bridge == 1)
   {
-    if (all_neighbors_attr[i].active == 1)
-    { total_active_neigh = total_active_neigh + 1; }
-  }
-  for (i = 0; i < no_of_neigh; i++)
-  {
-    if (all_neighbors_attr[i].active == 1)
+    int i, no_of_neigh, total_active_neigh = 0;
+    no_of_neigh = all_neighbors_attr.size();
+    for (i = 0; i < no_of_neigh; i++)
     {
-    cout<<"\ntotal_active_neigh: "<<total_active_neigh<<"\n";
-    send_msg_int(sockets[i],no_of_neigh);
-    for (int j = 0; j < no_of_neigh; j++)
-    {
-      //if (all_neighbors_attr[j].active == 1)
-       send_msg_string(sockets[i], all_neighbors_attr[j].ip); 
+      if (all_neighbors_attr[i].active == 1)
+      { total_active_neigh = total_active_neigh + 1; }
     }
-    } 
+    for (i = 0; i < no_of_neigh; i++)
+    {
+      if (all_neighbors_attr[i].active == 1)
+      {
+        cout<<"\ntotal_active_neigh: "<<total_active_neigh<<"\n";
+        send_msg_int(sockets[i],no_of_neigh);
+        for (int j = 0; j < no_of_neigh; j++)
+        {
+         //if (all_neighbors_attr[j].active == 1)
+         send_msg_string(sockets[i], all_neighbors_attr[j].ip); 
+        }
+     } 
+   }
+ }
+}
+
+void receive_bridge_neighbors(vector<attributes>& all_neighbors_attr, vector<int>& sockets, vector< vector<int> >& bridge_neighbors)
+{
+  int i;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+      vector<int> temp_vec;
+      int j, no_of_neigh;
+      recv_msg_int(sockets[i], &no_of_neigh);
+      cout<<"\nbridge "<<i<<": ";
+      cout<<"\nno of neighbors: "<<no_of_neigh<<"\n";
+      for (j = 0; j < no_of_neigh; j++)
+      {
+        ssize_t bytes_recieved;
+        char incoming_buffer[13];
+        bytes_recieved = recv(sockets[i], incoming_buffer, 13, 0);  // receiving address of bridge node neighbor
+        string s(incoming_buffer);
+        cout<<"ip: "<<s<<"\n";
+        check_neighbors(temp_vec, s, all_neighbors_attr);
+      }
+      bridge_neighbors.push_back(temp_vec);
+    }
   }
 }
 
-int main ()
+void create_connections(int total_neigh, vector<attributes>& all_neighbors_attr, vector<int>& sockets_server, vector<int>& sockets_client)
 {
-  int new_sd;
-  ssize_t bytes_recieved, bytes_sent;
-  unsigned char* point;
-  uint64_t temp_64;
-  clock_t t_1, t_2;
-  x_and_u msg_recv, avg, msg_send_serv;
-  admm_z msg_send, msg_recv_serv;
-  double v = 8.0, rho = 0.5;
-  int i, j, len_recv = 16, len_send = 8, no_of_sockets = 4, iterations = 0, no_of_neigh = 1, no_of_bridges = 1, total_neigh = 2;
-  int len_send_serv = 16, len_recv_serv = 8;
-  bool this_bridge = 1;
-  vector<int> sockets_server(total_neigh,0);
-  vector<int> sockets_client(total_neigh, 0);
-  vector<const char*> address(no_of_neigh,"172.16.0.14");
+  int i;
   mutex mtx_1, mtx_2;
-  attributes temp;
-  temp.inter_this = "172.16.0.14";
-  temp.connect_type = '0';
-  vector<attributes> all_neighbors_attr(total_neigh, temp);
-  initialize_all_addresses(address, all_neighbors_attr);
   for (i = 0; i < total_neigh; i++)
   {
     thread first(create_socket_server, all_neighbors_attr[i].inter_this, std::ref(all_neighbors_attr[i].connect_type), std::ref(sockets_server[i]), std::ref(mtx_1));
@@ -392,48 +404,66 @@ int main ()
     first.join();
     second.join();
   }
+}
+
+void bridge_computation(int total_neigh, vector<int>& sockets_server, x_and_u& avg, admm_z& msg_send)
+{
+  int len_recv = 16, len_send = 8, client = 0;
+  unsigned char buffer_send[8];
+  x_and_u msg_recv;
   for (i = 0; i < total_neigh; i++)
   {
-    cout<<"\nneighbor "<<i+1<<": \n";
-    cout<<"connect_type: "<<all_neighbors_attr[i].connect_type<<"\n";
-  }
-  if (this_bridge == 1)
-  {
-    send_bridge_neighbors(all_neighbors_attr,sockets_server);
-  }
-  vector<double> u_b(no_of_bridges, 0.0);
-  msg_send_serv.u = 0.0;
-  msg_send_serv.x = (2*v + 0.0 - rho*msg_send_serv.u*no_of_bridges)/(2+rho*no_of_bridges); 
-  t_1 = clock();
-  double sum_z_b = 0.0, sum_u_b = 0.0;
-  for (j = 0; j < iterations; j++)
-  {
-    unsigned char buffer_send[8];
-    avg.x = msg_send_serv.x;
-    avg.u = msg_send_serv.u;
-    for (i = 0; i < total_neigh; i++)
+    unsigned char buffer_recv[16];
+    if (all_neighbors_attr[i].active == 1)
     {
-      unsigned char buffer_recv[16];
-      if (all_neighbors_attr[i].active == 1)
-      {
-        recv_msg_struct(sockets_server[i], &buffer_recv[0], &msg_recv, len_recv); 
-      }
-      cout<<"\nFrom client "<<i+1<<":\n";
+      recv_msg_struct(sockets_server[i], &buffer_recv[0], &msg_recv, len_recv); 
+      cout<<"\nFrom client "<<client+1<<":\n";
       cout<<"msg x: "<<msg_recv.x<<"\n";
       cout<<"msg u: "<<msg_recv.u<<"\n"; 
       avg.x = avg.x + msg_recv.x;
       avg.u = avg.u + msg_recv.u;     
+      client = client + 1;
     }
-    avg.x = avg.x/(no_of_neigh + 1);
-    avg.u = avg.u/(no_of_neigh + 1);
-    msg_send.z = avg.x + avg.u;
-    for (i = 0; i < no_of_neigh; i++)
+  }
+  avg.x = avg.x/(client + 1);
+  avg.u = avg.u/(client + 1);
+  msg_send.z = avg.x + avg.u;
+  for (i = 0; i < total_neigh; i++)
+  {
+    if (all_neighbors_attr[i].active == 1)
     {
       send_msg_struct(sockets_server[i], &buffer_send[0], msg_send, len_send);
     }
-     vector<double> z_b(no_of_bridges, 0.0);
-    sum_z_b = 0.0;
-    for (i = 0; i < no_of_bridges - 1; i++)
+  }
+}
+
+int compute_no_of_bridges(vector<attributes>& all_neighbors_attr, bool this_bridge)
+{
+  int i, no_of_bridges = 0;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].bridge == 1)
+    {
+      no_of_bridges = no_of_bridges + 1;
+    }
+  }
+  if (this_bridge == 1)
+  { no_of_bridges = no_of_bridges + 1; }
+  return no_of_bridges;
+}
+
+void normal_node_computation(vector<attributes>& all_neighbors_attr, int total_neigh, admm_z& msg_send, x_and_u& msg_send_serv, double& sum_u_b, bool this_bridge)
+{
+  int no_of_bridges, len_send_serv = 16, len_recv_serv = 8;
+  no_of_bridges = compute_no_of_bridges(all_neighbors_attr, this_bridge);
+  vector<double> z_b(no_of_bridges, 0.0);
+  vector<double> u_b(no_of_bridges, 0.0);
+  admm_z msg_recv_serv;
+  double sum_z_b = 0.0;
+  int i;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
       unsigned char buffer_recv_serv[8];
       recv_msg_struct_cl(sockets_server[i], &buffer_recv_serv[0], &msg_recv_serv, len_recv_serv);
@@ -441,10 +471,13 @@ int main ()
       z_b[i] = msg_recv_serv.z;
       sum_z_b = sum_z_b + z_b[i];
     }
-    sum_z_b = sum_z_b + msg_send.z;
-    msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
-    sum_u_b = 0.0;
-    for (i = 0; i < no_of_bridges - 1; i++)
+  }
+  sum_z_b = sum_z_b + msg_send.z;
+  msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
+  sum_u_b = 0.0;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
       unsigned char buffer_send_serv[16];
       u_b[i] = u_b[i] + msg_send_serv.x - z_b[i];
@@ -452,15 +485,53 @@ int main ()
       msg_send_serv.u = u_b[i];
       send_msg_struct_cl(sockets_server[i], &buffer_send_serv[0], msg_send_serv, len_send_serv);
     }
-    u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
-    sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
-    msg_send_serv.u = u_b[no_of_bridges-1];
+  }
+  u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
+  sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
+  msg_send_serv.u = u_b[no_of_bridges-1];
+}
+
+int main ()
+{
+  clock_t t_1, t_2;
+  x_and_u avg, msg_send_serv;
+  admm_z msg_send;
+  double v = 8.0, rho = 0.5;
+  int i, j, iterations = 0, active_neigh = 1, no_of_bridges = 1, total_neigh = 2;
+  bool this_bridge = 1;
+  vector<int> sockets_server(total_neigh,0);
+  vector<int> sockets_client(total_neigh, 0);
+  attributes temp;
+  temp.inter_this = "172.16.0.14";
+  temp.connect_type = '0';
+  vector<attributes> all_neighbors_attr(total_neigh, temp);
+  initialize_all_addresses(all_neighbors_attr);
+  create_connections(total_neigh, all_neighbors_attr, sockets_server, sockets_client);
+  //receive_bridge_neighbors(all_neighbors_attr,sockets_client,bridge_neighbors);
+  //send_bridge_neighbors(all_neighbors_attr, sockets_server, this_bridge);
+  thread send_br_neighbors(send_bridge_neighbors, std::ref(all_neighbors_attr), std::ref(sockets_server), this_bridge);
+  thread receive_br_neighbors(receive_bridge_neighbors, std::ref(all_neighbors_attr), std::ref(sockets_client), std::ref(bridge_neighbors));
+  send_br_neighbors.join();
+  receive_br_neighbors.join();
+  msg_send_serv.u = 0.0;
+  msg_send_serv.x = (2*v + 0.0 - rho*msg_send_serv.u*no_of_bridges)/(2+rho*no_of_bridges); 
+  double sum_u_b = 0.0;
+  t_1 = clock();
+  for (j = 0; j < iterations; j++)
+  {
+    avg.x = msg_send_serv.x;
+    avg.u = msg_send_serv.u;
+    if (this_bridge == 1)
+    {
+      bridge_computation(total_neigh, sockets_server, avg, msg_send);
+    }
+    normal_node_computation(all_neighbors_attr, total_neigh, msg_send, msg_send_serv, sum_u_b, this_bridge);
   }
   t_2 = clock();
   float seconds = (float(t_2) - float(t_1))/CLOCKS_PER_SEC;
-  //cout<<"\nConsensus value: "<<msg_send.z<<"\n";
-  //cout<<"Value of x: "<<msg_send_serv.x<<"\n";
-  //cout<<"Value of v: "<<v<<"\n";
-  //cout<<"seconds: "<<seconds<<"\n";
+  cout<<"\nConsensus value: "<<msg_send.z<<"\n";
+  cout<<"Value of x: "<<msg_send_serv.x<<"\n";
+  cout<<"Value of v: "<<v<<"\n";
+  cout<<"seconds: "<<seconds<<"\n";
   return 0;
 }

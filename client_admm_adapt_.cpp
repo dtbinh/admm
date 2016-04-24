@@ -278,6 +278,7 @@ struct attributes
   int neigh_ind; 
   int node_deg;
   bool active;
+  bool bridge;
   char connect_type;
 };
 
@@ -293,9 +294,9 @@ void initialize_address_attr(const char* inter_this, const char* inter_neigh, at
   neighbor_attr.active = act;
 }
 
-void initialize_all_addresses(vector<const char*>& addresses, vector<attributes>& all_neighbors_attr)
+void initialize_all_addresses(vector<attributes>& all_neighbors_attr)
 {
-  addresses[0] = "172.16.0.5";
+  //addresses[0] = "172.16.0.5";
   //adresses[1] = "172.16.0.18";
   //all_neighbors_attr[0].inter = "172.16.0.5";
   //all_neighbors_attr[1].inter = "172.16.0.18";
@@ -330,26 +331,29 @@ void check_neighbors(vector<int>& temp_vec, string& s, vector<attributes>& all_n
 }
 
 void receive_bridge_neighbors(vector<attributes>& all_neighbors_attr, vector<int>& sockets, 
-     vector< vector<int> >& bridge_neighbors, int no_of_bridges)
+  vector< vector<int> >& bridge_neighbors)
 {
   int i;
-  for (i = 0; i < no_of_bridges; i++)
+  for (i = 0; i < all_neighbors_attr.size(); i++)
   {
-    vector<int> temp_vec;
-    int j, no_of_neigh;
-    recv_msg_int(sockets[i], &no_of_neigh);
-    cout<<"\nbridge "<<i<<": ";
-    cout<<"\nno of neighbors: "<<no_of_neigh<<"\n";
-    for (j = 0; j < no_of_neigh; j++)
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
-      ssize_t bytes_recieved;
-      char incoming_buffer[13];
-      bytes_recieved = recv(sockets[i], incoming_buffer, 13, 0);  // receiving address of bridge node neighbor
-      string s(incoming_buffer);
-      cout<<"ip: "<<s<<"\n";
-      check_neighbors(temp_vec, s, all_neighbors_attr);
+      vector<int> temp_vec;
+      int j, no_of_neigh;
+      recv_msg_int(sockets[i], &no_of_neigh);
+      cout<<"\nbridge "<<i<<": ";
+      cout<<"\nno of neighbors: "<<no_of_neigh<<"\n";
+      for (j = 0; j < no_of_neigh; j++)
+      {
+        ssize_t bytes_recieved;
+        char incoming_buffer[13];
+        bytes_recieved = recv(sockets[i], incoming_buffer, 13, 0);  // receiving address of bridge node neighbor
+        string s(incoming_buffer);
+        cout<<"ip: "<<s<<"\n";
+        check_neighbors(temp_vec, s, all_neighbors_attr);
+      }
+      bridge_neighbors.push_back(temp_vec);
     }
-    bridge_neighbors.push_back(temp_vec);
   }
 }
 
@@ -364,7 +368,6 @@ int main ()
   ssize_t bytes_sent, bytes_recv;
   vector<int> sockets_server(total_neigh,0);
   vector<int> sockets_client(total_neigh, 0);
-  vector<const char*> address(no_of_bridges,"172.16.0.14");
   mutex mtx_1, mtx_2;
   //vector<char*> all_neighbors(total_neigh, "172.16.0.14");
   attributes temp;
@@ -372,7 +375,7 @@ int main ()
   temp.connect_type = '0';
   vector<attributes> all_neighbors_attr(total_neigh, temp);
   vector< vector<int> > bridge_neighbors;
-  initialize_all_addresses(address, all_neighbors_attr); 
+  initialize_all_addresses(all_neighbors_attr); 
   for (i = 0; i < total_neigh; i++)
   {
     thread first(create_socket_server, all_neighbors_attr[i].inter_this, std::ref(all_neighbors_attr[i].connect_type), std::ref(sockets_server[i]), std::ref(mtx_1));
@@ -382,15 +385,15 @@ int main ()
   }
   //intialize_neighbors(all_neighbors, all_neighbors_ip);
   //initialize_bridge_neighbors(bridge_neighbors);
-  for (i = 0; i < total_neigh; i++)
-  {
-    cout<<"\nneighbor "<<i+1<<": \n";
-    cout<<"connect_type: "<<all_neighbors_attr[i].connect_type<<"\n";
-  }
-  send_msg_string(sockets_server[0], "This is from server.");
-  send_msg_string(sockets_client[0], "This is from client.");
- 
-  receive_bridge_neighbors(all_neighbors_attr,sockets_client,bridge_neighbors,no_of_bridges);
+ // for (i = 0; i < total_neigh; i++)
+  //{
+  //  cout<<"\nneighbor "<<i+1<<": \n";
+  //  cout<<"connect_type: "<<all_neighbors_attr[i].connect_type<<"\n";
+ // }
+ // send_msg_string(sockets_server[0], "This is from server.");
+//  send_msg_string(sockets_client[0], "This is from client.");
+
+  receive_bridge_neighbors(all_neighbors_attr,sockets_client,bridge_neighbors);
   msg_send.u = 0.0;
   msg_send.x = (2*v + 0.0 - msg_send.u)/(2+rho); 
   vector<double> u_b(no_of_bridges, 0.0);
