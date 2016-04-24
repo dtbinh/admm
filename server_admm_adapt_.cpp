@@ -7,8 +7,15 @@
 #include <vector>
 #include <math.h>
 #include <time.h>
+#include <thread>
+#include <mutex>
 
-using namespace std;
+using std::mutex;
+using std::thread;
+using std::string;
+using std::cout;
+using std::endl;
+using std::vector;
 
 uint64_t pack754(double f, unsigned bits, unsigned expbits)
 {
@@ -126,10 +133,10 @@ void send_msg_int(int new_sd, int value)
 {
   unsigned char* point;
   ssize_t bytes_sent;
-  int len = 4;
-  unsigned char buffer[4];
+  int len = 8;
+  unsigned char buffer[8];
   point = serialize_uint_64(&buffer[0],value); 
-  bytes_sent = send(new_sd, buffer, len, 0); 
+  bytes_sent = send(new_sd, buffer, len, 0);
 }
 
 void send_msg_struct_cl(int socketfd, unsigned char* buffer, x_and_u msg_send, int len)
@@ -169,7 +176,17 @@ void recv_msg_struct(int new_sd, unsigned char* buffer, x_and_u* msg_recv, int l
   msg_recv->u = unpack754(temp_64,64,11);
 }
 
-int create_socket(const char* s)
+void recv_msg_string(int new_sd, string& s)
+{
+ ssize_t bytes_received;
+ char incoming_buffer[100];
+ bytes_received = recv(new_sd, incoming_buffer, 100, 0);
+ string s1(incoming_buffer);
+ s = s1;
+ cout<<"\nbytes received: "<<bytes_received<<"\n";
+}
+
+void create_socket_server(const char* s, char& connect_type, int& sockets_server, mutex& mtx)
 {
  int status;
  struct addrinfo host_info;       
@@ -206,14 +223,18 @@ int create_socket(const char* s)
    cout<<"bind error"<<endl;
  } 
  cout << "Listening for connections..."<<endl;
+ //cout<<"before listen.\n";
  status =  listen(socketfd, 5);
+ //cout<<"after listen.\n";
  if (status == -1)  
  {
    cout<< "listen error"<<endl;
  }
+ //cout<<"after if.\n";
  int new_sd;
  struct sockaddr_storage their_addr;
  socklen_t addr_size = sizeof(their_addr);
+ //cout<<"before accept.\n";
  new_sd = accept(socketfd, (struct sockaddr *)&their_addr, &addr_size);
  if (new_sd == -1)
  {
@@ -222,27 +243,123 @@ int create_socket(const char* s)
  else
  {
    cout << "Connection accepted. Using new socketfd : "<<new_sd<<endl;
+   //mtx.lock();
+   connect_type = 's';
+   //mtx.unlock();
  }
- return new_sd;
+ sockets_server = new_sd;
 }
 
-void initialize_addresses(vector<const char*>& adresses, vector<char*>& all_neighbors, vector<char*>& all_neighbors_ip)
+void create_socket_client(const char* s, char& connect_type, int& socket_client, mutex& mtx)
+{
+  int status;
+  struct addrinfo host_info;
+  struct addrinfo *host_info_list;
+
+  memset(&host_info, 0, sizeof host_info);
+
+  host_info.ai_family = AF_UNSPEC;
+  host_info.ai_socktype = SOCK_STREAM;
+  status = getaddrinfo(s, "5532", &host_info, &host_info_list);
+  cout<<"status: "<<status<<endl;
+  if (status != 0)
+  {
+    cout<<"getaddrinfo error"<<endl<<gai_strerror(status);
+  }
+  cout<<"Creating a socket \n";
+  int socketfd;
+  socketfd = socket(host_info_list->ai_family, host_info_list->ai_socktype, host_info_list->ai_protocol);
+  if (socketfd == -1)
+  {
+    cout<<"socket error \n";
+  }
+  bool error_once = 0;
+  while(1)
+  {
+  status =  connect(socketfd, host_info_list->ai_addr, host_info_list->ai_addrlen);
+  if (status == -1 && error_once == 0)
+  {
+    cout<<"connect error \n";
+    error_once = 1;
+  }
+  else if (status == 0)
+  {
+    //mtx.lock();
+    connect_type = 'c';
+    //mtx.unlock();
+    cout << "send()ing message..."  <<endl;
+    cout<<"status: "<<status<<"\n";
+    break;
+  }
+  }
+  socket_client = socketfd;
+}
+
+struct attributes
+{
+  char* ip;
+  const char* inter_this;
+  const char* inter_neigh;
+  int neigh_ind; 
+  int node_deg;
+  bool active;
+  char connect_type;
+};
+
+void initialize_address_attr(const char* inter_this, const char* inter_neigh, attributes& neighbor_attr, char* ip_,
+     int index, int degree, bool act)
+{
+  //addr = inter_const;
+  neighbor_attr.inter_this = inter_this;
+  neighbor_attr.inter_neigh = inter_neigh;
+  neighbor_attr.ip = ip_;
+  neighbor_attr.neigh_ind = index;
+  neighbor_attr.node_deg = degree;
+  neighbor_attr.active = act;
+}
+
+void initialize_all_addresses(vector<const char*>& addresses, vector<attributes>& all_neighbors_attr)
 {
   //adresses[0] = "172.16.0.1";
-  adresses[0] = "172.16.0.1";
-  adresses[1] = "172.16.0.18";
-  all_neighbors[0] = "172.16.0.1";
-  all_neighbors[1] = "172.16.0.18";
-  all_neighbors[2] = "172.16.0.5";
+  //adresses[0] = "172.16.0.5";
+  //adresses[1] = "172.16.0.18";
+  //all_neighbors_attr[0].inter = "172.16.0.5";
+  //all_neighbors_attr[1].inter = "172.16.0.18";
+  //all_neighbors_attr[0].ip = "147.72.248.20";
+  addresses[0] = "172.16.0.5";
+  initialize_address_attr("172.16.0.5", "172.16.0.6", all_neighbors_attr[0], "147.72.248.20", 0, 1, 1);
+  initialize_address_attr("172.16.0.9", "172.16.0.14", all_neighbors_attr[1], "147.72.248.17", 0, 1, 0);
 }
 
-void send_bridge_neighbors(vector<char*>& all_neighbors_ip, vector<int>& sockets)
+void send_msg_string(int socketfd, char* msg)
 {
-  int i, no_of_neigh;
-  no_of_neigh = all_neighbors_ip.size();
-  for (i = 0; i < all_neighbors_ip.size(); i++)
-  {
+  int len;
+  ssize_t bytes_sent;
+  len = strlen(msg);
+  bytes_sent = send(socketfd, msg, len, 0);
+}
 
+void send_bridge_neighbors(vector<attributes>& all_neighbors_attr, vector<int>& sockets)
+{
+  int i, no_of_neigh, total_active_neigh = 0;
+  no_of_neigh = all_neighbors_attr.size();
+  for (i = 0; i < no_of_neigh; i++)
+  {
+    if (all_neighbors_attr[i].active == 1)
+    { total_active_neigh = total_active_neigh + 1; }
+  }
+  for (i = 0; i < no_of_neigh; i++)
+  {
+    if (all_neighbors_attr[i].active == 1)
+    {
+    cout<<"\ntotal_active_neigh: "<<total_active_neigh<<"\n";
+    send_msg_int(sockets[i],no_of_neigh);
+    for (int j = 0; j < no_of_neigh; j++)
+    {
+      //if (all_neighbors_attr[j].active == 1)
+       send_msg_string(sockets[i], all_neighbors_attr[j].ip); 
+    }
+    } 
   }
 }
 
@@ -256,18 +373,34 @@ int main ()
   x_and_u msg_recv, avg, msg_send_serv;
   admm_z msg_send, msg_recv_serv;
   double v = 8.0, rho = 0.5;
-  int i, j, len_recv = 16, len_send = 8, no_of_sockets = 4, iterations = 30, no_of_neigh = 2, no_of_bridges = 1;
+  int i, j, len_recv = 16, len_send = 8, no_of_sockets = 4, iterations = 0, no_of_neigh = 1, no_of_bridges = 1, total_neigh = 2;
   int len_send_serv = 16, len_recv_serv = 8;
-  vector<int> sockets(no_of_neigh,0);
+  bool this_bridge = 1;
+  vector<int> sockets_server(total_neigh,0);
+  vector<int> sockets_client(total_neigh, 0);
   vector<const char*> address(no_of_neigh,"172.16.0.14");
-  vector<char*> all_neighbors(total_neigh, "172.16.0.14");
-  vector<char*> all_neighbors_ip(total_neigh, "172.16.0.14");
-  initialize_addresses(address);
-  for (i = 0; i < no_of_neigh; i++)
+  mutex mtx_1, mtx_2;
+  attributes temp;
+  temp.inter_this = "172.16.0.14";
+  temp.connect_type = '0';
+  vector<attributes> all_neighbors_attr(total_neigh, temp);
+  initialize_all_addresses(address, all_neighbors_attr);
+  for (i = 0; i < total_neigh; i++)
   {
-    sockets[i] = create_socket(address[i]);
+    thread first(create_socket_server, all_neighbors_attr[i].inter_this, std::ref(all_neighbors_attr[i].connect_type), std::ref(sockets_server[i]), std::ref(mtx_1));
+    thread second(create_socket_client, all_neighbors_attr[i].inter_neigh, std::ref(all_neighbors_attr[i].connect_type), std::ref(sockets_client[i]), std::ref(mtx_2));
+    first.join();
+    second.join();
   }
-  send_bridge_neighbors(all_neighbors_ip,sockets);
+  for (i = 0; i < total_neigh; i++)
+  {
+    cout<<"\nneighbor "<<i+1<<": \n";
+    cout<<"connect_type: "<<all_neighbors_attr[i].connect_type<<"\n";
+  }
+  if (this_bridge == 1)
+  {
+    send_bridge_neighbors(all_neighbors_attr,sockets_server);
+  }
   vector<double> u_b(no_of_bridges, 0.0);
   msg_send_serv.u = 0.0;
   msg_send_serv.x = (2*v + 0.0 - rho*msg_send_serv.u*no_of_bridges)/(2+rho*no_of_bridges); 
@@ -278,10 +411,13 @@ int main ()
     unsigned char buffer_send[8];
     avg.x = msg_send_serv.x;
     avg.u = msg_send_serv.u;
-    for (i = 0; i < no_of_neigh; i++)
+    for (i = 0; i < total_neigh; i++)
     {
       unsigned char buffer_recv[16];
-      recv_msg_struct(sockets[i], &buffer_recv[0], &msg_recv, len_recv); 
+      if (all_neighbors_attr[i].active == 1)
+      {
+        recv_msg_struct(sockets_server[i], &buffer_recv[0], &msg_recv, len_recv); 
+      }
       cout<<"\nFrom client "<<i+1<<":\n";
       cout<<"msg x: "<<msg_recv.x<<"\n";
       cout<<"msg u: "<<msg_recv.u<<"\n"; 
@@ -293,14 +429,14 @@ int main ()
     msg_send.z = avg.x + avg.u;
     for (i = 0; i < no_of_neigh; i++)
     {
-      send_msg_struct(sockets[i], &buffer_send[0], msg_send, len_send);
+      send_msg_struct(sockets_server[i], &buffer_send[0], msg_send, len_send);
     }
      vector<double> z_b(no_of_bridges, 0.0);
     sum_z_b = 0.0;
     for (i = 0; i < no_of_bridges - 1; i++)
     {
       unsigned char buffer_recv_serv[8];
-      recv_msg_struct_cl(sockets[i], &buffer_recv_serv[0], &msg_recv_serv, len_recv_serv);
+      recv_msg_struct_cl(sockets_server[i], &buffer_recv_serv[0], &msg_recv_serv, len_recv_serv);
       cout<<"msg z: "<<msg_recv_serv.z<<"\n";
       z_b[i] = msg_recv_serv.z;
       sum_z_b = sum_z_b + z_b[i];
@@ -314,7 +450,7 @@ int main ()
       u_b[i] = u_b[i] + msg_send_serv.x - z_b[i];
       sum_u_b = sum_u_b + u_b[i];
       msg_send_serv.u = u_b[i];
-      send_msg_struct_cl(sockets[i], &buffer_send_serv[0], msg_send_serv, len_send_serv);
+      send_msg_struct_cl(sockets_server[i], &buffer_send_serv[0], msg_send_serv, len_send_serv);
     }
     u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
     sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
@@ -322,9 +458,9 @@ int main ()
   }
   t_2 = clock();
   float seconds = (float(t_2) - float(t_1))/CLOCKS_PER_SEC;
-  cout<<"\nConsensus value: "<<msg_send.z<<"\n";
-  cout<<"Value of x: "<<msg_send_serv.x<<"\n";
-  cout<<"Value of v: "<<v<<"\n";
-  cout<<"seconds: "<<seconds<<"\n";
+  //cout<<"\nConsensus value: "<<msg_send.z<<"\n";
+  //cout<<"Value of x: "<<msg_send_serv.x<<"\n";
+  //cout<<"Value of v: "<<v<<"\n";
+  //cout<<"seconds: "<<seconds<<"\n";
   return 0;
 }
