@@ -139,7 +139,7 @@ void send_msg_int(int new_sd, int value)
   bytes_sent = send(new_sd, buffer, len, 0);
 }
 
-void send_msg_struct_cl(int socketfd, unsigned char* buffer, x_and_u msg_send, int len)
+void send_msg_struct_cl(int socketfd, int i, unsigned char* buffer, x_and_u msg_send, int len)
 {
   unsigned char* point;
   ssize_t bytes_sent;
@@ -149,7 +149,7 @@ void send_msg_struct_cl(int socketfd, unsigned char* buffer, x_and_u msg_send, i
   temp_64 = pack754(msg_send.u,64,11);
   point = serialize_uint_64(point,temp_64); 
   bytes_sent = send(socketfd, buffer, len, 0);
-  cout<<"\nbytes_sent: "<<bytes_sent<<"\n";
+  cout<<"\nFrom :"<<i<<" bytes_sent: "<<bytes_sent<<"\n";
 }
 
 void recv_msg_int(int socketfd, int* msg_recv)
@@ -165,14 +165,14 @@ void recv_msg_int(int socketfd, int* msg_recv)
   //cout<<"msg_recv: "<<*msg_recv<<"\n";
 }
 
-void recv_msg_struct_cl(int socketfd, unsigned char* buffer, admm_z* msg_recv, int len)
+void recv_msg_struct_cl(int socketfd, int i, unsigned char* buffer, admm_z* msg_recv, int len)
 {
   unsigned char* point;
   ssize_t bytes_recv;
   uint64_t temp_64;
   bytes_recv = recv(socketfd, buffer, len, 0);
   point = deserialize_uint_64(buffer, &temp_64);
-  cout<<"bytes received: "<<bytes_recv<<endl;
+  cout<<"From "<<i<<", bytes received: "<<bytes_recv<<endl;
   msg_recv->z = unpack754(temp_64,64,11);
 }
 
@@ -493,49 +493,87 @@ struct char_16_array
   unsigned char buffer[16];
 };
 
+void create_recv_threads(vector<attributes>& all_neighbors_attr, vector<int>& sockets_client, 
+                         vector<thread>& recv_msg_cl_thread, vector<admm_z>& msg_recv_serv_vec)
+{
+  int i, count = 0, len_recv_serv = 8;
+  vector<char_8_array> buffer_recv_serv_vec;
+  buffer_recv_serv_vec.resize(all_neighbors_attr.size());
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  { 
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+     count = count + 1;
+     recv_msg_cl_thread.push_back( thread(recv_msg_struct_cl, sockets_client[i], count, &buffer_recv_serv_vec[i].buffer[0], 
+                       &msg_recv_serv_vec[i], len_recv_serv) );
+    }
+  }
+}
+
+void join_recv_threads(vector<attributes>& all_neighbors_attr, vector<thread>& recv_msg_cl_thread, vector<admm_z>& msg_recv_serv_vec)
+{
+  int i, count = 0;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  { 
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+      recv_msg_cl_thread[count].join(); 
+      count = count + 1; 
+      cout<<"From "<<count<<": ,msg z: "<<msg_recv_serv_vec[i].z<<"\n"; 
+    }
+  }
+}
+
+void create_send_threads(vector<attributes>& send_msg_cl_thread, vector<int>& sockets_client, x_and_u& msg_send_serv)
+{
+  int i, count = 0, len_send_serv = 16;
+  vector<char_16_array> buffer_send_serv_vec;
+  buffer_send_serv_vec.resize(all_neighbors_attr.size());
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  { 
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+      count = count + 1;
+      u_b[i] = u_b[i] + msg_send_serv.x - z_b[i];
+      sum_u_b = sum_u_b + u_b[i];
+      msg_send_serv.u = u_b[i];
+      send_msg_cl_thread.push_back( thread(send_msg_struct_cl, sockets_client[i], count, &buffer_send_serv_vec[i].buffer[0], 
+                     msg_send_serv, len_send_serv) );   
+    }
+  }
+}
+
+void join_send_threads(vector<thread>& send_msg_cl_thread)
+{
+  for (int i = 0; i < send_msg_cl_thread.size(); i++)
+  { send_msg_cl_thread[i].join(); }
+}
+
 void normal_node_computation(vector<attributes>& all_neighbors_attr, vector<int>& sockets_client, int total_neigh, 
     admm_z& msg_send, x_and_u& msg_send_serv, double& sum_u_b, bool this_bridge, const double rho, const double v)
 {
-  int no_of_bridges, len_send_serv = 16, len_recv_serv = 8;
+  int i, no_of_bridges, count = 0;
+  double sum_z_b = 0.0;
   no_of_bridges = compute_no_of_bridges(all_neighbors_attr, this_bridge);
   vector<double> z_b(no_of_bridges, 0.0);
   vector<double> u_b(no_of_bridges, 0.0);
   admm_z msg_recv_serv;
-  double sum_z_b = 0.0;
-  int i;
-  vector<char_8_array> buffer_recv_serv_vec;
-  buffer_recv_serv_vec.resize(all_neighbors_attr.size());
-  vector<char_16_array> buffer_send_serv_vec;
-  buffer_send_serv_vec.resize(all_neighbors_attr.size());
+  msg_recv_serv.z = 0.0;
+  vector<admm_z> msg_recv_serv_vec(all_neighbors_attr.size(),msg_recv_serv);
+  vector<thread> recv_msg_cl_thread;
+  vector<thread> send_msg_cl_thread;
+  create_recv_threads(all_neighbors_attr, sockets_client, recv_msg_cl_thread, msg_recv_serv_vec);
+  join_recv_threads(all_neighbors_attr, recv_msg_cl_thread, msg_recv_serv_vec);
   for (i = 0; i < all_neighbors_attr.size(); i++)
-  {
-    thread recv_msg_cl_thread[i](recv_msg_struct_cl, std::ref(sockets_client[i]), &buffer_send_serv_vec[i].buffer, &msg_recv_serv, len_recv_serv);
-  }
-  for (i = 0; i < all_neighbors_attr.size(); i++)
-  {
-    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
-    {
-      unsigned char buffer_recv_serv[8];
-      recv_msg_struct_cl(sockets_client[i], &buffer_recv_serv[0], &msg_recv_serv, len_recv_serv);
-      cout<<"msg z: "<<msg_recv_serv.z<<"\n";
-      z_b[i] = msg_recv_serv.z;
-      sum_z_b = sum_z_b + z_b[i];
-    }
+  {  
+    z_b[i] = msg_recv_serv_vec[i].z;
+    sum_z_b = sum_z_b + z_b[i];
   }
   sum_z_b = sum_z_b + msg_send.z;
   msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
+  create_send_threads(send_msg_cl_thread, sockets_client, msg_send_serv);
+  join_send_threads(send_msg_cl_thread);
   sum_u_b = 0.0;
-  for (i = 0; i < all_neighbors_attr.size(); i++)
-  {
-    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
-    {
-      unsigned char buffer_send_serv[16];
-      u_b[i] = u_b[i] + msg_send_serv.x - z_b[i];
-      sum_u_b = sum_u_b + u_b[i];
-      msg_send_serv.u = u_b[i];
-      send_msg_struct_cl(sockets_client[i], &buffer_send_serv[0], msg_send_serv, len_send_serv);
-    }
-  }
   u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
   sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
   msg_send_serv.u = u_b[no_of_bridges-1];
