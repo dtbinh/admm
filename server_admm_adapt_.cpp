@@ -176,7 +176,7 @@ void recv_msg_struct_cl(int socketfd, int i, unsigned char* buffer, admm_z* msg_
   msg_recv->z = unpack754(temp_64,64,11);
 }
 
-void recv_msg_struct(int new_sd, unsigned char* buffer, x_and_u* msg_recv, int len)
+void recv_msg_struct(int new_sd, int count, unsigned char* buffer, x_and_u* msg_recv, int len)
 {
   unsigned char* point;
   ssize_t bytes_recv;
@@ -187,6 +187,9 @@ void recv_msg_struct(int new_sd, unsigned char* buffer, x_and_u* msg_recv, int l
   msg_recv->x = unpack754(temp_64,64,11);
   point = deserialize_uint_64(point,&temp_64); 
   msg_recv->u = unpack754(temp_64,64,11);
+  cout<<"\nFrom client "<<count<<":\n";
+  cout<<"msg x: "<<msg_recv.x<<"\n";
+  cout<<"msg u: "<<msg_recv.u<<"\n"; 
 }
 
 void recv_msg_string(int new_sd, string& s)
@@ -433,38 +436,70 @@ void create_connections(int total_neigh, vector<attributes>& all_neighbors_attr,
   }
 }
 
-void bridge_computation(int total_neigh, vector<int>& sockets_server, x_and_u& avg, admm_z& msg_send, 
+void create_recv_threads_bridge(vector<attributes>& all_neighbors_attr, x_and_u& avg, vector<x_and_u>& msg_recv_vec, vector<thread>& recv_threads)
+{
+  vector<char_16_array> buffer_recv_vec;
+  buffer_recv_serv_vec.resize(all_neighbors_attr.size());
+  int i, len_recv = 16, count = 0;;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].active == 1)
+    {
+      count = count + 1;
+      recv_threads.push_back(threads(recv_msg_struct, sockets_server[i], int count, &buffer_recv_vec[i].buffer[0], &msg_recv_vec[i], len_recv));
+    }
+  }
+}
+
+void join_recv_threads_bridge(vector<attributes>& all_neighbors_attr, vector<thread>& recv_threds)
+{
+  int i;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    recv_threads[i].join();
+  }
+}
+
+void compute_z(vector<attributes>& all_neighbors_attr, vector<x_and_u>& msg_recv_vec, x_and_u& avg, admm_z& msg_send)
+{
+  int client = 0;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].active == 1)
+    {
+      avg.x = avg.x + msg_recv_vec[i].x;
+      avg.u = avg.u + msg_recv_vec[i].u;     
+      client = client + 1;
+    }
+  }
+  avg.x = avg.x/(client + 1);
+  avg.u = avg.u/(client + 1);
+  msg_send.z = avg.x + avg.u;
+}
+
+
+void bridge_node_computation(int total_neigh, vector<int>& sockets_server, x_and_u& avg, admm_z& msg_send, 
                         vector<attributes>& all_neighbors_attr, bool this_bridge)
 {
   if (this_bridge == 1)
   {
-    int i, len_recv = 16, len_send = 8, client = 0;
-    unsigned char buffer_send[8];
+    vector<thread> recv_threads;
+    vector<thread> send_threads;
     x_and_u msg_recv;
+    msg_recv.x = 0.0;
+    msg_recv.u = 0.0;
+    vector<x_and_u> msg_recv_vec(all_neighbors_attr.size(),msg_recv);
+    create_recv_threads_bridge(all_neighbors_attr, avg, msg_recv_vec, recv_threads);
+    join_recv_threads_bridge(all_neighbors_attr, recv_threds);
+    compute_z(all_neighbors_attr, msg_recv_vec, avg, msg_send);
+    
     for (i = 0; i < total_neigh; i++)
-   {
-     unsigned char buffer_recv[16];
-     if (all_neighbors_attr[i].active == 1)
-     {
-       recv_msg_struct(sockets_server[i], &buffer_recv[0], &msg_recv, len_recv); 
-       cout<<"\nFrom client "<<client+1<<":\n";
-       cout<<"msg x: "<<msg_recv.x<<"\n";
-       cout<<"msg u: "<<msg_recv.u<<"\n"; 
-       avg.x = avg.x + msg_recv.x;
-       avg.u = avg.u + msg_recv.u;     
-       client = client + 1;
-     }
-   }
-   avg.x = avg.x/(client + 1);
-   avg.u = avg.u/(client + 1);
-   msg_send.z = avg.x + avg.u;
-   for (i = 0; i < total_neigh; i++)
-   {
-     if (all_neighbors_attr[i].active == 1)
-     {
-       send_msg_struct(sockets_server[i], &buffer_send[0], msg_send, len_send);
-     }
-   }
+    {
+      if (all_neighbors_attr[i].active == 1)
+      {
+        send_msg_struct(sockets_server[i], &buffer_send[0], msg_send, len_send);
+      }
+    }
  }
 }
 
@@ -524,7 +559,7 @@ void join_recv_threads(vector<attributes>& all_neighbors_attr, vector<thread>& r
   }
 }
 
-void create_send_threads(vector<attributes>& send_msg_cl_thread, vector<int>& sockets_client, x_and_u& msg_send_serv)
+void create_send_threads(vector<attributes>& all_neighbors_attr, vector<thread>& send_msg_cl_thread, vector<int>& sockets_client, x_and_u& msg_send_serv, vector<double>& u_b)
 {
   int i, count = 0, len_send_serv = 16;
   vector<char_16_array> buffer_send_serv_vec;
@@ -533,12 +568,10 @@ void create_send_threads(vector<attributes>& send_msg_cl_thread, vector<int>& so
   { 
     if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
-      count = count + 1;
-      u_b[i] = u_b[i] + msg_send_serv.x - z_b[i];
-      sum_u_b = sum_u_b + u_b[i];
-      msg_send_serv.u = u_b[i];
+      msg_send_serv.u = u_b[count];
       send_msg_cl_thread.push_back( thread(send_msg_struct_cl, sockets_client[i], count, &buffer_send_serv_vec[i].buffer[0], 
-                     msg_send_serv, len_send_serv) );   
+                     msg_send_serv, len_send_serv) );
+      count = count + 1;   
     }
   }
 }
@@ -549,32 +582,59 @@ void join_send_threads(vector<thread>& send_msg_cl_thread)
   { send_msg_cl_thread[i].join(); }
 }
 
-void normal_node_computation(vector<attributes>& all_neighbors_attr, vector<int>& sockets_client, int total_neigh, 
-    admm_z& msg_send, x_and_u& msg_send_serv, double& sum_u_b, bool this_bridge, const double rho, const double v)
+void compute_x_value(vector<attributes>& all_neighbors_attr, int no_of_bridges, double z_value, 
+                      x_and_u& msg_send_serv, vector<admm_z>& msg_recv_serv_vec, double sum_u_b, vector<double>& z_b, const double rho, const double v)
+{
+  double sum_z_b = 0.0;
+  int count = 0;
+  for (int i = 0; i < all_neighbors_attr.size(); i++)
+  {
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+      z_b[count] = msg_recv_serv_vec[i].z;
+      sum_z_b = sum_z_b + z_b[count];
+      count = count + 1;
+    }
+  }
+  sum_z_b = sum_z_b + z_value;
+  msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
+}
+
+void compute_u_values(vector<attributes>& all_neighbors_attr, x_and_u& msg_send_serv, double& sum_u_b, vector<double>& z_b, vector<double>& u_b)
+{
+  int i, count = 0;
+  for (i = 0; i < all_neighbors_attr.size(); i++)
+  { 
+    if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
+    {
+      u_b[count] = u_b[count] + msg_send_serv.x - z_b[count];
+      sum_u_b = sum_u_b + u_b[count];
+      count = count + 1;  
+    }
+  }
+}
+
+void normal_node_computation(thread& bridge, vector<attributes>& all_neighbors_attr, vector<int>& sockets_client, int total_neigh, 
+    double z_value, x_and_u& msg_send_serv, double& sum_u_b, bool this_bridge, const double rho, const double v)
 {
   int i, no_of_bridges, count = 0;
   double sum_z_b = 0.0;
   no_of_bridges = compute_no_of_bridges(all_neighbors_attr, this_bridge);
-  vector<double> z_b(no_of_bridges, 0.0);
   vector<double> u_b(no_of_bridges, 0.0);
+  vector<double> z_b(no_of_bridges, 0.0);
   admm_z msg_recv_serv;
   msg_recv_serv.z = 0.0;
   vector<admm_z> msg_recv_serv_vec(all_neighbors_attr.size(),msg_recv_serv);
   vector<thread> recv_msg_cl_thread;
   vector<thread> send_msg_cl_thread;
+  compute_u_values(all_neighbors_attr, msg_send_serv, sum_u_b, z_b, u_b);
+  compute_x_value(all_neighbors_attr, no_of_bridges, z_value, msg_send_serv, msg_recv_serv_vec, sum_u_b, z_b, rho, v);
+  create_send_threads(all_neighbors_attr, send_msg_cl_thread, sockets_client, msg_send_serv, u_b);
+  join_send_threads(send_msg_cl_thread);
   create_recv_threads(all_neighbors_attr, sockets_client, recv_msg_cl_thread, msg_recv_serv_vec);
   join_recv_threads(all_neighbors_attr, recv_msg_cl_thread, msg_recv_serv_vec);
-  for (i = 0; i < all_neighbors_attr.size(); i++)
-  {  
-    z_b[i] = msg_recv_serv_vec[i].z;
-    sum_z_b = sum_z_b + z_b[i];
-  }
-  sum_z_b = sum_z_b + msg_send.z;
-  msg_send_serv.x = (2*v + rho*sum_z_b - rho*sum_u_b)/(2+rho*no_of_bridges);
-  create_send_threads(send_msg_cl_thread, sockets_client, msg_send_serv);
-  join_send_threads(send_msg_cl_thread);
   sum_u_b = 0.0;
-  u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - msg_send.z;
+  u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - z_value;
   sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
   msg_send_serv.u = u_b[no_of_bridges-1];
 }
@@ -598,22 +658,27 @@ int main ()
   create_connections(total_neigh, all_neighbors_attr, sockets_server, sockets_client);
   //receive_bridge_neighbors(all_neighbors_attr,sockets_client,bridge_neighbors);
   //send_bridge_neighbors(all_neighbors_attr, sockets_server, this_bridge);
+  no_of_bridges = compute_no_of_bridges(all_neighbors_attr, this_bridge);
+  vector<double> u_b(no_of_bridges, 0.0);
+  vector<double> z_b(no_of_bridges, 0.0);
   thread send_br_neighbors(send_bridge_neighbors, std::ref(all_neighbors_attr), std::ref(sockets_server), this_bridge);
   thread receive_br_neighbors(receive_bridge_neighbors, std::ref(all_neighbors_attr), std::ref(sockets_client), std::ref(bridge_neighbors));
   send_br_neighbors.join();
   receive_br_neighbors.join();
   msg_send_serv.u = 0.0;
   msg_send_serv.x = (2*v + 0.0 - rho*msg_send_serv.u*no_of_bridges)/(2+rho*no_of_bridges); 
-  double sum_u_b = 0.0;
+  msg_send.z = 0.0;
+  double sum_u_b = 0.0, z_value;
   t_1 = clock();
   for (j = 0; j < iterations; j++)
   {
     avg.x = msg_send_serv.x;
     avg.u = msg_send_serv.u;
+    z_value = msg_send.z;
     //bridge_computation(total_neigh, sockets_server, avg, msg_send, all_neighbors_attr);
     thread bridge(bridge_computation, total_neigh, std::ref(sockets_server), std::ref(avg), std::ref(msg_send), std::ref(all_neighbors_attr), this_bridge);
     //normal_node_computation(all_neighbors_attr, sockets_client, total_neigh, msg_send, msg_send_serv, sum_u_b, this_bridge, rho, v);
-    thread normal(normal_node_computation, std::ref(all_neighbors_attr), std::ref(sockets_client), total_neigh, std::ref(msg_send), std::ref(msg_send_serv), std::ref(sum_u_b)
+    thread normal(normal_node_computation, std::ref(bridge), std::ref(all_neighbors_attr), std::ref(sockets_client), total_neigh, z_value, std::ref(msg_send_serv), std::ref(sum_u_b)
                   ,this_bridge, rho, v);
     bridge.join();
     normal.join();
