@@ -345,7 +345,7 @@ void initialize_all_addresses(vector<attributes>& all_neighbors_attr)
   //all_neighbors_attr[1].inter = "172.16.0.18";
   //all_neighbors_attr[0].ip = "147.72.248.20";
   //addresses[0] = "172.16.0.5";
-  initialize_address_attr("172.16.0.5", "172.16.0.6", all_neighbors_attr[0], "147.72.248.19", 0, 1, 1, 1);
+  initialize_address_attr("172.16.0.5", "172.16.0.6", all_neighbors_attr[0], "147.72.248.11", 0, 1, 1, 0);
   //initialize_address_attr("172.16.0.9", "172.16.0.14", all_neighbors_attr[1], "147.72.248.17", 0, 1, 0);
 }
 
@@ -488,8 +488,6 @@ void compute_z(vector<attributes>& all_neighbors_attr, vector<x_and_u>& msg_recv
 void create_send_threads_bridge(vector<attributes>& all_neighbors_attr, vector<thread>& send_threads, vector<int>& sockets_server, vector<char_8_array>& buffer_send_vec,  admm_z msg_send)
 {
   int i, len_send = 8;
-  //vector<char_8_array> buffer_send_vec;
-  //buffer_send_vec.resize(all_neighbors_attr.size());
  for (i = 0; i < all_neighbors_attr.size(); i++)
  {
    if (all_neighbors_attr[i].active == 1)
@@ -497,7 +495,6 @@ void create_send_threads_bridge(vector<attributes>& all_neighbors_attr, vector<t
      send_threads.push_back(thread(send_msg_struct, sockets_server[i], &buffer_send_vec[i].buffer[0], msg_send, len_send));
    }
  }
- //send_thread_ = thred(send_msg_struct, sockets_server[i], &buffer_send_vec[0].buffer[0], msg_send, len_send);
 }
 
 void join_send_threads_bridge(vector<thread>& send_threads)
@@ -533,25 +530,11 @@ void bridge_node_computation(vector<int>& sockets_server, x_and_u& avg, admm_z& 
     vector<attributes> attr_recv, attr_send;
     attr_recv = all_neighbors_attr;
     attr_send = all_neighbors_attr;
-    //compute_z(all_neighbors_attr, msg_recv_vec, avg, msg_send);
-    //cout<<"\nafter compute_z in bridge_node_computation.\n";
-    //create_send_threads_bridge(all_neighbors_attr, send_threads, sockets_server, msg_send);
-    //cout<<"\nafter create_send_threads_bridge function in bridge_node_computation.\n";
-    //join_send_threads_bridge(send_threads);
-    //cout<<"\nafter join_send_threads_bridge function in bridge_node_computation.\n";
     create_recv_threads_bridge(attr_recv, sockets_server, avg, msg_recv_vec, recv_threads);
     join_recv_threads_bridge(recv_threads);
     cout<<"\nafter joining recv threads.\n";
     compute_z(all_neighbors_attr, msg_recv_vec, avg, msg_send);
-    cout<<"\nafter compute_z in bridge_node_computation.\n";
     create_send_threads_bridge(attr_send, send_threads, sockets_server,  buffer_send_vec, msg_send);
-    //vector<thread> send_thread;
-    //create_send_thread_temp(send_thread, sockets_server, buffer_send_vec, msg_send, len);
-    //join_send_thread_temp(send_thread);
-    //thread send_thread(send_msg_struct, sockets_server[0], &buffer_send_vec[0].buffer[0], msg_send, len); 
-    //send_thread.join();
-    
-    //cout<<"\nafter create_send_threads_bridge function in bridge_node_computation.\n";
     join_send_threads_bridge(send_threads);
     cout<<"\nafter join_send_threads_bridge function in bridge_node_computation.\n";
  }
@@ -589,7 +572,7 @@ void create_recv_threads(vector<attributes>& all_neighbors_attr, vector<int>& so
                        &msg_recv_serv_vec[i], len_recv_serv) );
     }
   }
- cout<<"\nafter create_recv_threads, after for loop.";
+ //cout<<"\nafter create_recv_threads, after for loop.";
 }
 
 void join_recv_threads(vector<attributes>& all_neighbors_attr, vector<thread>& recv_msg_cl_thread, vector<admm_z>& msg_recv_serv_vec)
@@ -606,17 +589,15 @@ void join_recv_threads(vector<attributes>& all_neighbors_attr, vector<thread>& r
   }
 }
 
-void create_send_threads(vector<attributes>& all_neighbors_attr, vector<thread>& send_msg_cl_thread, vector<int>& sockets_client, x_and_u& msg_send_serv, vector<double>& u_b)
+void create_send_threads(vector<attributes>& all_neighbors_attr, vector<thread>& send_msg_cl_thread, vector<char_16_array>& buffer_send_vec, vector<int>& sockets_client, x_and_u& msg_send_serv, vector<double>& u_b)
 {
   int i, count = 0, len_send_serv = 16;
-  vector<char_16_array> buffer_send_serv_vec;
-  buffer_send_serv_vec.resize(all_neighbors_attr.size());
   for (i = 0; i < all_neighbors_attr.size(); i++)
   { 
     if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
       msg_send_serv.u = u_b[count];
-      send_msg_cl_thread.push_back( thread(send_msg_struct_cl, sockets_client[i], count, &buffer_send_serv_vec[i].buffer[0], 
+      send_msg_cl_thread.push_back( thread(send_msg_struct_cl, sockets_client[i], count, &buffer_send_vec[i].buffer[0], 
                      msg_send_serv, len_send_serv) );
       count = count + 1;   
     }
@@ -638,7 +619,6 @@ void compute_x_value(vector<attributes>& all_neighbors_attr, int no_of_bridges, 
   {
     if (all_neighbors_attr[i].bridge == 1 && all_neighbors_attr[i].active == 1)
     {
-      //z_b[count] = msg_recv_serv_vec[i].z;
       sum_z_b = sum_z_b + z_b[count];
       count = count + 1;
     }
@@ -670,23 +650,24 @@ void normal_node_computation(vector<attributes>& all_neighbors_attr, vector<int>
   no_of_bridges = compute_no_of_bridges(all_neighbors_attr, this_bridge);
   vector<double> u_b(no_of_bridges, 0.0);
   vector<double> z_b(no_of_bridges, 0.0);
-  //admm_z msg_recv_serv;
-  //msg_recv_serv.z = 0.0;
-  //vector<admm_z> msg_recv_serv_vec(all_neighbors_attr.size(),msg_recv_serv);
+  vector<char_16_array> buffer_send_vec;
+  buffer_send_vec.resize(all_neighbors_attr.size());
   vector<thread> recv_msg_cl_thread;
   vector<thread> send_msg_cl_thread;
   compute_u_values(all_neighbors_attr, msg_send_serv, msg_recv_serv_vec, sum_u_b, z_b, u_b);
   compute_x_value(all_neighbors_attr, no_of_bridges, z_value, msg_send_serv, sum_u_b, z_b, rho, v);
-  create_send_threads(all_neighbors_attr, send_msg_cl_thread, sockets_client, msg_send_serv, u_b);
+  create_send_threads(all_neighbors_attr, send_msg_cl_thread, buffer_send_vec,  sockets_client, msg_send_serv, u_b);
   join_send_threads(send_msg_cl_thread);
   create_recv_threads(all_neighbors_attr, sockets_client, recv_msg_cl_thread, msg_recv_serv_vec);
   join_recv_threads(all_neighbors_attr, recv_msg_cl_thread, msg_recv_serv_vec);
-  cout<<"\nafter joining create_recv_threads in normal_node_computation.\n";
+  //cout<<"\nafter joining create_recv_threads in normal_node_computation.\n";
   sum_u_b = 0.0;
-  u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - z_value;
-  sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
-  msg_send_serv.u = u_b[no_of_bridges-1];
-  cout<<"\nafter normal_node_computation.\n";
+  if (this_bridge == 1)
+  {
+    u_b[no_of_bridges-1] = u_b[no_of_bridges-1] + msg_send_serv.x - z_value;
+    sum_u_b = sum_u_b + u_b[no_of_bridges-1]; 
+    msg_send_serv.u = u_b[no_of_bridges-1];
+  }
 }
 
 int main ()
@@ -694,7 +675,7 @@ int main ()
   clock_t t_1, t_2;
   x_and_u avg, msg_send_serv;
   admm_z msg_send;
-  double v = 8.0, rho = 0.5;
+  double v = 9.0, rho = 0.5;
   int i, j, iterations = 25, active_neigh = 1, no_of_bridges = 1, total_neigh = 1;
   bool this_bridge = 1;
   vector<int> sockets_server(total_neigh,0);
@@ -736,11 +717,10 @@ int main ()
     //bridge_computation(total_neigh, sockets_server, avg, msg_send, all_neighbors_attr);
     thread bridge(bridge_node_computation, std::ref(sockets_server), std::ref(avg), std::ref(msg_send), std::ref(all_neighbors_attr_bridge), this_bridge);
     //normal_node_computation(all_neighbors_attr, sockets_client, total_neigh, msg_send, msg_send_serv, sum_u_b, this_bridge, rho, v);
-   // thread normal(normal_node_computation, std::ref(all_neighbors_attr), std::ref(sockets_client), z_value, std::ref(msg_send_serv), 
-   //              std::ref(msg_recv_serv_vec), std::ref(sum_u_b), this_bridge, rho, v);
+    thread normal(normal_node_computation, std::ref(all_neighbors_attr), std::ref(sockets_client), z_value, std::ref(msg_send_serv), std::ref(msg_recv_serv_vec), std::ref(sum_u_b), this_bridge, rho, v);
     cout<<"after creating normal node thread.\n";
     bridge.join();
-    //normal.join();
+    normal.join();
   }
   t_2 = clock();
   float seconds = (float(t_2) - float(t_1))/CLOCKS_PER_SEC;
